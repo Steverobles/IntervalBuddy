@@ -1,8 +1,9 @@
-let totalTime, totalSeconds, intervalTimer;
+let totalTime, totalSeconds;
 let isRunning = false;
 let isPaused = false;
-let currentInterval = 45; // Start with workout phase
 let isWorkout = true;
+let startTime, nextSwitchTime;
+let animationFrameId;
 
 const totalTimeInput = document.getElementById('total-time');
 const timerDisplay = document.getElementById('timer-display');
@@ -20,68 +21,77 @@ function formatTime(seconds) {
 function startTimer() {
     if (isRunning) return;
 
-    totalTime = parseInt(totalTimeInput.value) * 60; // Convert minutes to seconds
+    totalTime = parseInt(totalTimeInput.value) * 60;
     totalSeconds = totalTime;
-    
+
     isRunning = true;
+    isPaused = false;
     startBtn.disabled = true;
     pauseBtn.disabled = false;
     resetBtn.disabled = false;
 
-    intervalTimer = setInterval(updateTimer, 1000);
+    startTime = performance.now(); // High precision time tracking
+    nextSwitchTime = startTime + 45000; // First interval switch at 45s
+
+    requestAnimationFrame(updateTimer);
 }
 
 function updateTimer() {
-    if (totalSeconds <= 0) {
+    if (!isRunning) return;
+
+    const now = performance.now();
+    const elapsed = Math.floor((now - startTime) / 1000); // More precise than `Date.now()`
+    let remaining = totalSeconds - elapsed;
+
+    if (remaining <= 0) {
         stopTimer();
         return;
     }
 
-    totalSeconds--;
-    timerDisplay.textContent = formatTime(totalSeconds);
-    
-    if (currentInterval === 0) {
-        switchPhase();
-    } else {
-        currentInterval--;
-        intervalDisplay.textContent = formatTime(currentInterval);
-    }
-}
+    timerDisplay.textContent = formatTime(remaining);
 
-function switchPhase() {
-    isWorkout = !isWorkout;
-    currentInterval = isWorkout ? 45 : 15;
-    
-    document.body.style.backgroundColor = isWorkout ? "#4CAF50" : "#FF5733";
-    
-    intervalDisplay.textContent = formatTime(currentInterval);
-    
-    playBeep(isWorkout ? 2 : 1);
+    // Check if it's time to switch
+    if (now >= nextSwitchTime) {
+        isWorkout = !isWorkout;
+        nextSwitchTime = now + (isWorkout ? 45000 : 15000); // Reset switch time
+
+        playBeep(isWorkout ? 2 : 1);
+        document.body.style.backgroundColor = isWorkout ? "#4CAF50" : "#FF5733";
+    }
+
+    // Update the interval display
+    let intervalRemaining = Math.ceil((nextSwitchTime - now) / 1000);
+    intervalDisplay.textContent = formatTime(intervalRemaining);
+
+    // Use requestAnimationFrame for ultra-precise updates
+    animationFrameId = requestAnimationFrame(updateTimer);
 }
 
 function pauseTimer() {
     if (!isRunning) return;
 
     if (isPaused) {
-        intervalTimer = setInterval(updateTimer, 1000);
+        startTime += performance.now() - nextSwitchTime + (isWorkout ? 45000 : 15000);
+        nextSwitchTime = performance.now() + (isWorkout ? 45000 : 15000);
+        requestAnimationFrame(updateTimer);
         pauseBtn.textContent = "Pause";
     } else {
-        clearInterval(intervalTimer);
+        cancelAnimationFrame(animationFrameId);
         pauseBtn.textContent = "Resume";
     }
-    
+
     isPaused = !isPaused;
 }
 
 function stopTimer() {
-    clearInterval(intervalTimer);
+    cancelAnimationFrame(animationFrameId);
     isRunning = false;
     isPaused = false;
-    
+
     startBtn.disabled = false;
     pauseBtn.disabled = true;
     resetBtn.disabled = true;
-    
+
     timerDisplay.textContent = "00:00";
     intervalDisplay.textContent = "00:00";
     document.body.style.backgroundColor = "#f4f4f4";
@@ -94,14 +104,14 @@ function resetTimer() {
 
 function playBeep(times) {
     const context = new (window.AudioContext || window.webkitAudioContext)();
-    
+
     function beep() {
         const oscillator = context.createOscillator();
         oscillator.type = "sine";
-        oscillator.frequency.setValueAtTime(1000, context.currentTime); // 1000 Hz beep sound
+        oscillator.frequency.setValueAtTime(1000, context.currentTime);
         oscillator.connect(context.destination);
         oscillator.start();
-        oscillator.stop(context.currentTime + 0.2); // 200ms beep
+        oscillator.stop(context.currentTime + 0.2);
     }
 
     let count = 0;
@@ -110,7 +120,7 @@ function playBeep(times) {
         if (count < times) {
             beep();
             count++;
-            setTimeout(beepLoop, 500); // 500ms delay between beeps
+            setTimeout(beepLoop, 100);
         }
     }
 
